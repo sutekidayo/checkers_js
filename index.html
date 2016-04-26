@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Checkmate Checkers AI</title>
+    <link rel="stylesheet" href="css/bootstrap.min.css">
+</head>
+<body>
+
+<script src="js/bootstrap.min.js"></script>
+<script src="js/intellect.min.js"></script>
+<script>
+    var nn = Intellect({Layers: [54, 80, 20, 1]});
+
+    var move_table = [
+        [4, 5, -1, 9, -1, -1, -1, -1],
+        [5, 6, 8, 10, -1, -1, -1, -1],
+        [6, 7, 9, 11, -1, -1, -1, -1],
+        [7, -1, 10, -1, -1, -1, -1, -1],
+        [-1, 8, -1, 13, -1, 0, -1, -1],
+        [8, 9, 12, 14, 0, 1, -1, -1],
+        [9, 10, 13, 15, 1, 2, -1, -1],
+        [10, 11, 14, -1, 2, 3, -1, -1],
+        [12, 13, -1, 17, 4, 5, -1, 1],
+        [13, 14, 16, 18, 5, 6, 0, 2],
+        [14, 15, 17, 19, 6, 7, 1, 3],
+        [15, -1, 18, -1, 7, -1, 2, -1],
+        [-1, 16, -1, 21, -1, 8, -1, 5],
+        [16, 17, 20, 22, 8, 9, 4, 6],
+        [17, 18, 21, 23, 9, 10, 5, 7],
+        [18, 19, 22, -1, 10, 11, 6, -1],
+        [20, 21, -1, 25, 12, 13, -1, 9],
+        [21, 22, 24, 26, 13, 14, 8, 10],
+        [22, 23, 25, 27, 14, 15, 9, 11],
+        [23, -1, 26, -1, 15, -1, 10, -1],
+        [-1, 24, -1, 29, -1, 16, -1, 13],
+        [24, 25, 28, 30, 16, 17, 12, 14],
+        [25, 26, 29, 31, 17, 18, 13, 15],
+        [26, 27, 30, -1, 18, 19, 14, -1],
+        [28, 29, -1, -1, 20, 21, -1, 17],
+        [29, 30, -1, -1, 21, 22, 16, 18],
+        [30, 31, -1, -1, 22, 23, 17, 19],
+        [31, -1, -1, -1, 23, -1, 18, -1],
+        [-1, -1, -1, -1, -1, 24, -1, 21],
+        [-1, -1, -1, -1, 24, 25, 20, 22],
+        [-1, -1, -1, -1, 25, 26, 21, 23],
+        [-1, -1, -1, -1, 26, 27, 22, -1]
+    ];
+
+    var CheckersBoard = function (options) {
+        if (window == this) {
+            // Prevent Cluttering the Window Scope;
+            return new CheckersBoard(options);
+        }
+
+        options = options || {red:false, black:false, kings: false};
+        this.red = options.red || 0x00000FFF;
+        this.black = options.black || 0xFFF00000;
+        this.kings = options.kings || 0;
+    };
+
+    CheckersBoard.prototype = {
+
+
+        set: function (options) {
+            this.red = options.red || 0x00000FFF;
+            this.black = options.black || 0xFFF00000;
+            this.kings = options.kings || 0;
+        },
+
+        equals: function (board) {
+            return this.red == board.red && this.black == board.black && this.kings == board.kings;
+        },
+
+        //recursive function to generate possible jumps
+        //Inputs:start position, piece jumped by last move, color, king status, a bitmap to pieces that have been killed by previous jumps
+        //a vector of int vectors to store legal moves, and an int vector containing moves that brought us to this point
+        gen_jumps: function (start, kill_ind, red_flag, king_flag, killed, main_moves, this_move) {
+            killed |= 1<<kill_ind;
+            var flag = false;
+            if(red_flag || king_flag)//moving down
+            {
+                if(move_table[start][2]!=-1)//SW
+                {
+                    if(((red_flag? this.black: this.red)>>move_table[start][0] &1) && !(killed>>move_table[start][0]&1)
+                        && !(this.red>>move_table[start][2]&1) && !(this.black>>move_table[start][2]&1))
+                    {
+                        //push this position and look in next position for more possible jumps
+                        this_move.push(move_table[start][2]);
+                        flag = true;//mark that a jump was found
+                        this.gen_jumps(move_table[start][2],move_table[start][0],red_flag,king_flag,killed,main_moves,this_move);
+                        this_move.pop();
+                    }
+                }
+                if(move_table[start][3]!=-1)//SE
+                {
+                    if(((red_flag?this.black:this.red)>>move_table[start][1] &1) && !(killed>>move_table[start][1] &1)
+                        && !(this.red>>move_table[start][3] &1) && !(this.black>>move_table[start][3] &1))
+                    {
+                        //push this position and look in next position for more possible jumps
+                        this_move.push(move_table[start][3]);
+                        flag = true;//mark that a jump was found
+                        this.gen_jumps(move_table[start][3],move_table[start][1],red_flag,king_flag,killed,main_moves,this_move);
+                        this_move.pop();
+                    }
+                }
+            }
+            if(!red_flag || king_flag)//up
+            {
+                if(move_table[start][6]!=-1)//NW
+                {
+                    if(((red_flag?this.black:this.red)>>move_table[start][4] &1) && !(killed>>move_table[start][4] &1)
+                        && !(this.red>>move_table[start][6] &1) && !(this.black>>move_table[start][6] &1))
+                    {
+                        //push this position and look in next position for more possible jumps
+                        this_move.push(move_table[start][6]);
+                        flag = true;//mark that a jump was found
+                        this.gen_jumps(move_table[start][6],move_table[start][4],red_flag,king_flag,killed,main_moves,this_move);
+                        this_move.pop();
+                    }
+                }
+                if(move_table[start][7]!=-1)//NE
+                {
+                    if(((red_flag?this.black:this.red)>>move_table[start][5] &1) && !(killed>>move_table[start][5] &1)
+                        && !(this.red>>move_table[start][7] &1) && !(this.black>>move_table[start][7] &1))
+                    {
+                        //push this position and look in next position for more possible jumps
+                        this_move.push(move_table[start][7]);
+                        flag = true;//mark that a jump was found
+                        this.gen_jumps(move_table[start][7],move_table[start][5],red_flag,king_flag,killed,main_moves,this_move);
+                        this_move.pop();
+                    }
+                }
+            }
+            //if no further jumps were found, add this move to the list
+            if(!flag)
+                main_moves.push(this_move);
+            return;
+        },
+
+        //move generator
+        //Input: color of player to generate for
+        //Returns a vector of int vectors containing all possible moves
+        //format is:
+        //{{start,[intermediate, ..., intermediate], end},
+        //	...
+        //  start,[intermediate, ..., intermediate], end}}
+        gen_moves: function(red_player, forced_capture, num_pieces) {
+            var num_pieces = 0,
+                moves = new Array(50),
+                one_move = new Array(50),
+                forced_jump = false,
+                non_jumps_cleared = false;
+
+            for (var i=0; i < 32; i++){
+                var red_flag = false,
+                    black_flag = false,
+                    king_flag = false;
+
+                red_flag = ((this.red>>i)&1);
+                black_flag = ((this.black>>i)&1);
+
+                if (red_flag || black_flag){
+                    num_pieces++;
+                }
+
+                if ((red_player && black_flag) || (!red_player && red_flag) || (!red_flag && !black_flag)){
+                    continue;
+                }
+
+                // now i is the location of a piece of the current player
+                king_flag = ((this.kings >>i) & i);
+                var SW =false, SE =false, NW =false, NE =false, // available move flags
+			        jump_SW =false, jump_SE =false, jump_NW =false, jump_NE =false;
+
+                if(red_player || king_flag) //moving down
+                {
+                    if(move_table[i][0] !=-1) //check for availible move SW
+                    {
+                        if(!(((red_player?this.black:this.red) >> move_table[i][0]) & 1))//check for opposing piece
+                        {
+                            if(!(((red_player?this.red:this.black) >> move_table[i][0]) & 1))//check for friendly
+                                SW = true;
+                        }
+                        else if(move_table[i][2]!=-1 &&
+                            !(((red_player?this.black:this.red) >> move_table[i][2]) & 1) &&
+                            !(((red_player?this.red:this.black) >>move_table[i][2]) & 1))//check to see if we can jump
+                        {
+                            jump_SW = true;
+                            forced_jump = true;
+                        }
+                    }
+
+                    if(move_table[i][1] !=-1) //check for availible move SE
+                    {
+                        if(!(((red_player?this.black:this.red) >> move_table[i][1]) & 1))//check for opposing piece
+                        {
+                            if(!(((red_player?this.red:this.black) >> move_table[i][1]) & 1))//check for friendly
+                                SE = true;
+                        }
+                        else if(move_table[i][3]!=-1 &&
+                            !(((red_player?this.black:this.red) >> move_table[i][3]) & 1) &&
+                            !(((red_player?this.red:this.black) >>move_table[i][3]) & 1))//check to see if we can jump
+                        {
+                            jump_SE = true;
+                            forced_jump = true;
+                        }
+                    }
+                }
+
+                if(!red_player || king_flag) //moving up
+                {
+                    if(move_table[i][4] !=-1) //check for availible move NW
+                    {
+                        if(!(((red_player?this.black:this.red) >> move_table[i][4]) & 1))//check for opposing piece
+                        {
+                            if(!(((red_player?this.red:this.black) >> move_table[i][4]) & 1))//check for friendly
+                                NW = true;
+                        }
+                        else if(move_table[i][6]!=-1 &&
+                            !(((red_player?this.black:this.red)>> move_table[i][6]) & 1) &&
+                            !(((red_player?this.red:this.black) >>move_table[i][6]) & 1))//check to see if we can jump
+                        {
+                            jump_NW = true;
+                            forced_jump = true;
+                        }
+                    }
+
+                    if(move_table[i][5] !=-1) //check for availible move NE
+                    {
+                        if(!(((red_player?this.black:this.red) >> move_table[i][5]) & 1))//check for opposing piece
+                        {
+                            if(!(((red_player?this.red:this.black) >> move_table[i][5]) & 1))//check for friendly
+                                NE = true;
+                        }
+                        else if(move_table[i][7]!=-1 &&
+                            !(((red_player?this.black:this.red) >> move_table[i][7]) & 1) &&
+                            !(((red_player?this.red:this.black) >>move_table[i][7]) & 1))//check to see if we can jump
+                        {
+                            jump_NE = true;
+                            forced_jump = true;
+                        }
+                    }
+                }
+                //now we have determined which directions and jumps are possible
+                //first calculate multiple jumps and store to main vector
+                if(forced_jump)
+                {
+                    if(!non_jumps_cleared)
+                    {
+                        moves.clear();
+                        non_jumps_cleared = true;
+                    }
+                    if(jump_SW)
+                    {
+                        one_move.push(i);
+                        one_move.push(move_table[i][2]);
+                        this.gen_jumps(move_table[i][2],move_table[i][0],red_flag,king_flag,0,moves,one_move);
+                        one_move.clear();
+                    }
+                    if(jump_SE)
+                    {
+                        one_move.push(i);
+                        one_move.push(move_table[i][3]);
+                        this.gen_jumps(move_table[i][3],move_table[i][1],red_flag,king_flag,0,moves,one_move);
+                        one_move.clear();
+                    }
+                    if(jump_NW)
+                    {
+                        one_move.push(i);
+                        one_move.push(move_table[i][6]);
+                        this.gen_jumps(move_table[i][6],move_table[i][4],red_flag,king_flag,0,moves,one_move);
+                        one_move.clear();
+                    }
+                    if(jump_NE)
+                    {
+                        one_move.push(i);
+                        one_move.push(move_table[i][7]);
+                        this.gen_jumps(move_table[i][7],move_table[i][5],red_flag,king_flag,0,moves,one_move);
+                        one_move.clear();
+                    }
+                }
+                //if a jump is not forced, we store non-jump moves
+                else
+                {
+                    if(SW)
+                    {
+                        one_move.push(i);
+                        one_move.push(move_table[i][0]);
+                        moves.push(one_move);
+                        one_move.clear();
+
+                    }
+                    if(SE)
+                    {
+                        one_move.push(i);
+                        one_move.push(move_table[i][1]);
+                        moves.push(one_move);
+                        one_move.clear();
+                    }
+                    if(NW)
+                    {
+                        one_move.push(i);
+                        one_move.push(move_table[i][4]);
+                        moves.push(one_move);
+                        one_move.clear();
+                    }
+                    if(NE)
+                    {
+                        one_move.push(i);
+                        one_move.push(move_table[i][5]);
+                        moves.push(one_move);
+                        one_move.clear();
+                    }
+                }
+            }
+            forced_capture = forced_jump;
+            return moves;
+
+
+        },
+
+        //Input: vector of board locations { start, [intermediate, ..., intermediate,] end}
+        //assumes move passed to it is legal. NO CHECKING IS PERFORMED
+        move: function () {
+
+        },
+
+        //chooses a move
+        //does a combination of alpha-beta pruning minimax search, hash-table lookup,
+        //	endgame DB lookup, and NeuralNet evaluation to find the optimal move for a given position.
+        //Inputs:
+        //red_player: boolean true if the player is red, false if black
+        //net: the NeuralNet to be used for evaluating boards
+        //seen_hash: the hash table associated with the NeuralNet to speed up lookups of previously seen boards
+        //				boards evaluated in this call to choose_move will be added to this hash table
+        //num_plies: the number of plies to search, where 1 ply is a move and a response
+        //returns a move in this format: { start, [intermediate, ..., intermediate,] end}
+        choose_move: function () {
+
+        },
+
+        //verifies that a given move is legal for the current board
+        //Inputs
+        //move, whose format is { start, [intermediate, ..., intermediate,] end}
+        //red_player: boolean true if the player is red, false if black
+        verify_move: function () {
+
+        },
+
+        //function to see if it is possible for a piece to be captured by either side
+        any_captures: function () {
+
+        },
+
+        //Calculates the difference in pieces to get a good estimate of current winner
+        piece_differential: function () {
+
+        },
+
+        //Calls the NeuralNet to evaluate this board
+        //Evaluates the board for Red's advantage
+        //Prereqs: Must have generated moves(for red), must have initialized end-game DB.
+        evaluate: function () {
+
+        },
+
+        //check to see if a player (color denoted by red_player input) has won
+        //returns
+        //-1 for loss
+        //0 for neither win nor loss
+        //1 for win
+        //note that it does not attempt to determine draws.
+        check_win_loss: function () {
+
+        },
+
+        // ptins board to given element, assumes console.log by default
+        print: function () {
+
+        }
+
+
+    }
+</script>
+</body>
+</html>
